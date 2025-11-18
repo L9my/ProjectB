@@ -13,6 +13,7 @@ const audioPlayerEl = document.getElementById('audio-player');
 const audioToggleBtn = document.getElementById('audio-toggle');
 const audioEl = document.getElementById('bg-audio');
 const audioProgressEl = document.getElementById('audio-progress');
+//this should have been applied
 const REQUIRED_PRESSES = 10;
 let remainingPresses = REQUIRED_PRESSES;
 const MODEL_LIFT = 0.6;
