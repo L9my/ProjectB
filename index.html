@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Happy Birthday</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://unpkg.com/three@0.161.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/three@0.161.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://unpkg.com/three@0.161.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://unpkg.com/three@0.161.0/examples/js/loaders/DRACOLoader.js"></script>
+</head>
+<body>
+  <div id="overlay">
+    <div class="overlay-content">
+      <button id="enter-btn" aria-label="Enter the birthday experience">Enter</button>
+      <p id="status" role="status"></p>
+    </div>
+  </div>
+  <div id="scene-container"></div>
+  <script src="script.js"></script>
+</body>
+</html>
