@@ -2,8 +2,29 @@ const container = document.getElementById('scene-container');
 const overlay = document.getElementById('overlay');
 const enterBtn = document.getElementById('enter-btn');
 const statusEl = document.getElementById('status');
-const audioUrl = 'assets/birthday-melody.wav';
-let audio;
+
+const LIB_SOURCES = {
+  three: [
+    'https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.min.js',
+    'https://unpkg.com/three@0.161.0/build/three.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.161.0/three.min.js',
+  ],
+  controls: [
+    'https://cdn.jsdelivr.net/npm/three@0.161.0/examples/js/controls/OrbitControls.js',
+    'https://unpkg.com/three@0.161.0/examples/js/controls/OrbitControls.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.161.0/examples/js/controls/OrbitControls.js',
+  ],
+  gltf: [
+    'https://cdn.jsdelivr.net/npm/three@0.161.0/examples/js/loaders/GLTFLoader.js',
+    'https://unpkg.com/three@0.161.0/examples/js/loaders/GLTFLoader.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.161.0/examples/js/loaders/GLTFLoader.js',
+  ],
+  draco: [
+    'https://cdn.jsdelivr.net/npm/three@0.161.0/examples/js/loaders/DRACOLoader.js',
+    'https://unpkg.com/three@0.161.0/examples/js/loaders/DRACOLoader.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.161.0/examples/js/loaders/DRACOLoader.js',
+  ],
+};
 
 function setStatus(message, isError = false) {
   if (!statusEl) return;
@@ -11,23 +32,55 @@ function setStatus(message, isError = false) {
   statusEl.classList.toggle('error', isError);
 }
 
-async function loadAudio() {
-  try {
-    const response = await fetch(audioUrl, { method: 'HEAD' });
-    if (!response.ok) {
-      console.warn('No birthday melody found at', audioUrl);
-      return;
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.onload = () => resolve(true);
+    script.onerror = () => reject(new Error(`Failed to load ${src}`));
+    document.head.appendChild(script);
+  });
+}
+
+async function loadFirstAvailable(sources) {
+  let lastError;
+  for (const src of sources) {
+    try {
+      await loadScript(src);
+      return true;
+    } catch (error) {
+      lastError = error;
+      console.warn(error.message);
     }
-    audio = new Audio(audioUrl);
-    audio.loop = true;
-    audio.volume = 0.5;
-  } catch (err) {
-    console.warn('Audio not available:', err);
   }
+  if (lastError) console.error(lastError.message);
+  return false;
+}
+
+async function ensureThreeStack() {
+  const hasThree = typeof THREE !== 'undefined';
+  if (!hasThree) await loadFirstAvailable(LIB_SOURCES.three);
+
+  const hasControls = typeof THREE !== 'undefined' && THREE.OrbitControls;
+  if (!hasControls) await loadFirstAvailable(LIB_SOURCES.controls);
+
+  const hasGLTF = typeof THREE !== 'undefined' && THREE.GLTFLoader;
+  if (!hasGLTF) await loadFirstAvailable(LIB_SOURCES.gltf);
+
+  const hasDraco = typeof THREE !== 'undefined' && THREE.DRACOLoader;
+  if (!hasDraco) await loadFirstAvailable(LIB_SOURCES.draco);
+
+  return (
+    typeof THREE !== 'undefined' &&
+    THREE.OrbitControls &&
+    THREE.GLTFLoader &&
+    THREE.DRACOLoader
+  );
 }
 
 let scene, camera, renderer, controls, mixer;
-const clock = new THREE.Clock();
+let clock;
 let started = false;
 
 function createRenderer() {
@@ -195,9 +248,9 @@ function initScene() {
   scene.add(floor);
 
   createLights();
-  return loadCakeModel();
-
   window.addEventListener('resize', onWindowResize);
+
+  return loadCakeModel();
 }
 
 function onWindowResize() {
@@ -217,28 +270,24 @@ function animate() {
 async function startExperience() {
   if (started) return;
   started = true;
-  setStatus('Loading cake...');
+  setStatus('Loading 3D libraries...');
 
-  if (!window.THREE || !THREE.GLTFLoader || !THREE.OrbitControls) {
-    setStatus('3D libraries failed to load. Please refresh or check your connection.', true);
+  const libsReady = await ensureThreeStack();
+  if (!libsReady) {
     started = false;
+    setStatus('3D libraries failed to load. Please refresh or check your connection.', true);
     return;
   }
+
+  setStatus('Loading cake...');
+
+  clock = new THREE.Clock();
 
   overlay.classList.add('hidden');
   const loadPromise = initScene();
   animate();
 
-  if (audio) {
-    try {
-      await audio.play();
-    } catch (err) {
-      console.warn('Audio could not start automatically:', err);
-    }
-  }
-
   await loadPromise;
 }
 
 enterBtn.addEventListener('click', startExperience);
-loadAudio();
