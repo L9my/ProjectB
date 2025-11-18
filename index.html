@@ -3,22 +3,44 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Happy Birthday</title>
+  <title>???</title>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&display=swap" />
   <link rel="stylesheet" href="style.css" />
-  <script src="https://unpkg.com/three@0.161.0/build/three.min.js"></script>
-  <script src="https://unpkg.com/three@0.161.0/examples/js/controls/OrbitControls.js"></script>
-  <script src="https://unpkg.com/three@0.161.0/examples/js/loaders/GLTFLoader.js"></script>
-  <script src="https://unpkg.com/three@0.161.0/examples/js/loaders/DRACOLoader.js"></script>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
+      }
+    }
+  </script>
 </head>
 <body>
   <div id="overlay">
     <div class="overlay-content">
       <button id="enter-btn" aria-label="Enter the birthday experience">Enter</button>
       <p id="status" role="status"></p>
+      <p id="press-counter"></p>
     </div>
   </div>
+  <div id="greeting" aria-live="polite">Happy Birthday Amalia!!!</div>
+  <div id="audio-player" aria-label="Music player">
+    <button id="audio-toggle" type="button" aria-label="Pause background music">
+      <span class="icon icon-pause" aria-hidden="true"></span>
+      <span class="sr-only">Pause</span>
+    </button>
+    <div class="track-info">
+      <span class="track-title">
+        <span class="track-title-marquee" aria-hidden="true">
+          <span class="track-title-text">Lorelei - Cocetau Twins</span>
+          <span class="track-title-text">Lorelei - Cocetau Twins</span>
+        </span>
+      </span>
+      <input type="range" id="audio-progress" min="0" max="100" value="0" aria-label="Seek track" />
+    </div>
+    <audio id="bg-audio" src="assets/Lorelei - Cocetau Twins.mp3" preload="auto"></audio>
+  </div>
   <div id="scene-container"></div>
-  <script src="script.js"></script>
+  <script type="module" src="script.js"></script>
 </body>
 </html>

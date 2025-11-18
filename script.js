@@ -1,30 +1,115 @@
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+
 const container = document.getElementById('scene-container');
 const overlay = document.getElementById('overlay');
 const enterBtn = document.getElementById('enter-btn');
 const statusEl = document.getElementById('status');
+const pressCounterEl = document.getElementById('press-counter');
+const greetingEl = document.getElementById('greeting');
+const audioPlayerEl = document.getElementById('audio-player');
+const audioToggleBtn = document.getElementById('audio-toggle');
+const audioEl = document.getElementById('bg-audio');
+const audioProgressEl = document.getElementById('audio-progress');
+const REQUIRED_PRESSES = 5;
+let remainingPresses = REQUIRED_PRESSES;
+const MODEL_LIFT = 0.6;
+const textureLoader = new THREE.TextureLoader();
+const cubeTextureLoader = new THREE.CubeTextureLoader();
+const CUBEMAP_PATH = 'assets/sky_05_cubemap_2k/';
+const CUBEMAP_FILES = ['px.png', 'nx.png', 'py.png', 'ny.png', 'pz.png', 'nz.png'];
+let backdrop;
+let reflectionMap;
+let pmremGenerator;
+let pmremTarget;
+let materialEnvMap;
+let envMapPromise;
+let isAudioPlaying = false;
 
-const LIB_SOURCES = {
-  three: [
-    'https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.min.js',
-    'https://unpkg.com/three@0.161.0/build/three.min.js',
-    'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.161.0/three.min.js',
-  ],
-  controls: [
-    'https://cdn.jsdelivr.net/npm/three@0.161.0/examples/js/controls/OrbitControls.js',
-    'https://unpkg.com/three@0.161.0/examples/js/controls/OrbitControls.js',
-    'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.161.0/examples/js/controls/OrbitControls.js',
-  ],
-  gltf: [
-    'https://cdn.jsdelivr.net/npm/three@0.161.0/examples/js/loaders/GLTFLoader.js',
-    'https://unpkg.com/three@0.161.0/examples/js/loaders/GLTFLoader.js',
-    'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.161.0/examples/js/loaders/GLTFLoader.js',
-  ],
-  draco: [
-    'https://cdn.jsdelivr.net/npm/three@0.161.0/examples/js/loaders/DRACOLoader.js',
-    'https://unpkg.com/three@0.161.0/examples/js/loaders/DRACOLoader.js',
-    'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.161.0/examples/js/loaders/DRACOLoader.js',
-  ],
-};
+function showGreeting() {
+  if (greetingEl) {
+    greetingEl.classList.add('visible');
+  }
+}
+
+function hideGreeting() {
+  if (greetingEl) {
+    greetingEl.classList.remove('visible');
+  }
+}
+
+function showAudioPlayer() {
+  if (audioPlayerEl) {
+    audioPlayerEl.classList.add('visible');
+  }
+  if (audioEl) {
+    audioEl.volume = 0.03;
+  }
+}
+
+function hideAudioPlayer() {
+  if (audioPlayerEl) {
+    audioPlayerEl.classList.remove('visible');
+  }
+  if (audioEl) {
+    audioEl.pause();
+    audioEl.currentTime = 0;
+    isAudioPlaying = false;
+    updateAudioToggle();
+    updateAudioProgress(0);
+  }
+}
+
+function updateAudioToggle() {
+  if (!audioToggleBtn) return;
+  const icon = audioToggleBtn.querySelector('.icon');
+  if (!icon) return;
+  icon.classList.toggle('icon-pause', isAudioPlaying);
+  icon.classList.toggle('icon-play', !isAudioPlaying);
+  const srText = audioToggleBtn.querySelector('.sr-only');
+  if (srText) {
+    srText.textContent = isAudioPlaying ? 'Pause' : 'Play';
+  }
+}
+
+function updateAudioProgress(percent) {
+  if (!audioProgressEl) return;
+  audioProgressEl.value = String(percent);
+}
+
+function attachAudioEvents() {
+  if (!audioEl) return;
+  audioEl.addEventListener('timeupdate', () => {
+    if (!audioEl.duration) return;
+    const percent = (audioEl.currentTime / audioEl.duration) * 100;
+    updateAudioProgress(percent);
+  });
+  if (audioProgressEl) {
+    audioProgressEl.addEventListener('input', (event) => {
+      if (!audioEl.duration) return;
+      const inputEl = event.target;
+      const percent = Number(inputEl.value);
+      const newTime = (percent / 100) * audioEl.duration;
+      audioEl.currentTime = newTime;
+    });
+  }
+}
+
+function updatePressCounter() {
+  if (!pressCounterEl) return;
+  if (remainingPresses > 0) {
+    const plural = remainingPresses === 1 ? 'time' : 'times';
+    pressCounterEl.textContent = `You have to press ${remainingPresses} more ${plural} to enter the site`;
+  } else {
+    pressCounterEl.textContent = 'You can enter now!';
+  }
+}
+
+updatePressCounter();
+updateAudioToggle();
+attachAudioEvents();
 
 function setStatus(message, isError = false) {
   if (!statusEl) return;
@@ -32,78 +117,136 @@ function setStatus(message, isError = false) {
   statusEl.classList.toggle('error', isError);
 }
 
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = src;
-    script.async = true;
-    script.onload = () => resolve(true);
-    script.onerror = () => reject(new Error(`Failed to load ${src}`));
-    document.head.appendChild(script);
-  });
-}
-
-async function loadFirstAvailable(sources) {
-  let lastError;
-  for (const src of sources) {
-    try {
-      await loadScript(src);
-      return true;
-    } catch (error) {
-      lastError = error;
-      console.warn(error.message);
-    }
-  }
-  if (lastError) console.error(lastError.message);
-  return false;
-}
-
-async function ensureThreeStack() {
-  const hasThree = typeof THREE !== 'undefined';
-  if (!hasThree) await loadFirstAvailable(LIB_SOURCES.three);
-
-  const hasControls = typeof THREE !== 'undefined' && THREE.OrbitControls;
-  if (!hasControls) await loadFirstAvailable(LIB_SOURCES.controls);
-
-  const hasGLTF = typeof THREE !== 'undefined' && THREE.GLTFLoader;
-  if (!hasGLTF) await loadFirstAvailable(LIB_SOURCES.gltf);
-
-  const hasDraco = typeof THREE !== 'undefined' && THREE.DRACOLoader;
-  if (!hasDraco) await loadFirstAvailable(LIB_SOURCES.draco);
-
-  return (
-    typeof THREE !== 'undefined' &&
-    THREE.OrbitControls &&
-    THREE.GLTFLoader &&
-    THREE.DRACOLoader
-  );
-}
-
 let scene, camera, renderer, controls, mixer;
 let clock;
 let started = false;
+
+function loadEnvironmentMap() {
+  if (envMapPromise) return envMapPromise;
+  envMapPromise = new Promise((resolve, reject) => {
+    cubeTextureLoader.setPath(CUBEMAP_PATH).load(
+      CUBEMAP_FILES,
+      (texture) => {
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.mapping = THREE.CubeReflectionMapping;
+        reflectionMap = texture;
+        resolve(texture);
+      },
+      undefined,
+      (error) => {
+        console.error('Failed to load cubemap environment.', error);
+        reject(error);
+      },
+    );
+  });
+  return envMapPromise;
+}
 
 function createRenderer() {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.setClearColor(0x000000, 1);
+  renderer.setClearColor(0x2a2f35, 1);
   container.appendChild(renderer.domElement);
   return renderer;
 }
 
+function applyEnvironmentToScene(texture) {
+  if (!scene || !renderer || !texture) return;
+  if (!pmremGenerator) {
+    pmremGenerator = new THREE.PMREMGenerator(renderer);
+    pmremGenerator.compileCubemapShader();
+  }
+  if (pmremTarget) {
+    pmremTarget.dispose();
+  }
+  pmremTarget = pmremGenerator.fromCubemap(texture);
+  materialEnvMap = pmremTarget.texture;
+  scene.environment = materialEnvMap;
+  scene.background = texture;
+}
+
 function createLights() {
-  const ambient = new THREE.AmbientLight(0xffffff, 0.6);
-  const spot = new THREE.SpotLight(0xfff0cf, 1.3, 0, Math.PI / 4, 0.2, 1.5);
-  spot.position.set(4, 6, 4);
-  spot.castShadow = true;
-  spot.shadow.mapSize.width = 1024;
-  spot.shadow.mapSize.height = 1024;
+  const ambient = new THREE.AmbientLight(0xffffff, 0.75);
+  const hemisphere = new THREE.HemisphereLight(0xfff6e6, 0x1f2431, 0.4);
 
-  const rim = new THREE.DirectionalLight(0x7ac7ff, 0.5);
-  rim.position.set(-5, 4, -5);
+  const key = new THREE.DirectionalLight(0xfff0dd, 1.4);
+  key.position.set(2.8, 4.5, 2.6);
+  key.target.position.set(0.4, MODEL_LIFT + 0.2, 0.3);
+  key.castShadow = true;
+  key.shadow.mapSize.set(2048, 2048);
+  key.shadow.bias = -0.0003;
 
-  scene.add(ambient, spot, rim);
+  const fill = new THREE.DirectionalLight(0xf6dff2, 0.85);
+  fill.position.set(-3.4, 3.5, -0.5);
+
+  const topFill = new THREE.PointLight(0xfdfbff, 1.2, 8, 1.3);
+  topFill.position.set(-0.2, MODEL_LIFT + 2.3, 0.1);
+
+  const rim = new THREE.DirectionalLight(0x9ed0ff, 0.7);
+  rim.position.set(-4, 3, -4);
+
+  scene.add(ambient, hemisphere, key, key.target, fill, topFill, rim);
+}
+
+function ensureBackdrop() {
+  if (!scene) return;
+  if (backdrop) {
+    if (!backdrop.parent) {
+      scene.add(backdrop);
+    }
+    return;
+  }
+
+  const planeWidth = 5.5;
+  const planeHeight = 3.4;
+  const radius = 6.5;
+  const midY = MODEL_LIFT + planeHeight / 2 - 0.35;
+  const definitions = [
+    { file: 'assets/AmaliaMinecraft2.png', angle: THREE.MathUtils.degToRad(45) },
+    { file: 'assets/AmaliaMinecraft.png', angle: 0 },
+    { file: 'assets/AmaliaMinecraft3.png', angle: THREE.MathUtils.degToRad(-45) },
+  ];
+
+  const lookTarget = new THREE.Vector3(0, midY, 0);
+  const group = new THREE.Group();
+
+  definitions.forEach(({ file, angle }) => {
+    const texture = textureLoader.load(file);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
+    const material = new THREE.MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+      side: THREE.DoubleSide,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    const x = Math.sin(angle) * radius;
+    const z = -Math.cos(angle) * radius;
+    mesh.position.set(x, midY, z);
+    mesh.lookAt(lookTarget);
+    group.add(mesh);
+  });
+
+  backdrop = group;
+  scene.add(backdrop);
+}
+
+function adjustGlossiness(object3D) {
+  if (!object3D) return;
+  object3D.traverse((child) => {
+    if (!child.isMesh) return;
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    materials.forEach((mat) => {
+      if (!mat || !('roughness' in mat)) return;
+      mat.roughness = Math.min(1, (typeof mat.roughness === 'number' ? mat.roughness : 0.5) + 0.35);
+      mat.metalness = Math.max(0, Math.min(1, (typeof mat.metalness === 'number' ? mat.metalness : 0.2) * 0.25));
+      if ('envMapIntensity' in mat) {
+        mat.envMapIntensity = 0.75;
+      }
+      mat.needsUpdate = true;
+    });
+  });
 }
 
 function centerModel(object) {
@@ -113,6 +256,7 @@ function centerModel(object) {
   box.getSize(size);
   box.getCenter(center);
   object.position.sub(center);
+  object.position.y += MODEL_LIFT;
   const maxDim = Math.max(size.x, size.y, size.z);
   const fitHeightDistance = maxDim / (2 * Math.atan((Math.PI * camera.fov) / 360));
   const fitWidthDistance = fitHeightDistance / camera.aspect;
@@ -120,7 +264,7 @@ function centerModel(object) {
   const direction = new THREE.Vector3(0, 0.2, 1.2).normalize();
   const newPosition = direction.multiplyScalar(distance * 1.4);
   camera.position.copy(newPosition);
-  controls.target.set(0, size.y * 0.2, 0);
+  controls.target.set(0, size.y * 0.2 + MODEL_LIFT, 0);
   controls.update();
 }
 
@@ -189,10 +333,10 @@ function createPlaceholderCake() {
 
 function loadCakeModel() {
   return new Promise((resolve) => {
-    const loader = new THREE.GLTFLoader();
+    const loader = new GLTFLoader();
 
-    if (THREE.DRACOLoader) {
-      const dracoLoader = new THREE.DRACOLoader();
+    if (DRACOLoader) {
+      const dracoLoader = new DRACOLoader();
       dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
       dracoLoader.setDecoderConfig({ type: 'js' });
       loader.setDRACOLoader(dracoLoader);
@@ -208,6 +352,7 @@ function loadCakeModel() {
             child.receiveShadow = true;
           }
         });
+        adjustGlossiness(model);
         scene.add(model);
         centerModel(model);
         setStatus('');
@@ -217,6 +362,7 @@ function loadCakeModel() {
       (err) => {
         console.warn('Could not load cake model, falling back to placeholder.', err);
         const placeholder = createPlaceholderCake();
+        adjustGlossiness(placeholder);
         scene.add(placeholder);
         centerModel(placeholder);
         setStatus('Using placeholder cake (model missing or invalid).', true);
@@ -226,28 +372,31 @@ function loadCakeModel() {
   });
 }
 
+
 function initScene() {
   scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x2a2f35);
   camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
   renderer = createRenderer();
+  loadEnvironmentMap()
+    .then((texture) => {
+      applyEnvironmentToScene(texture);
+    })
+    .catch(() => {
+      console.warn('Running without HDR environment.');
+    });
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-  controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.enablePan = false;
   controls.minDistance = 2;
   controls.maxDistance = 10;
 
-  const floorGeo = new THREE.PlaneGeometry(40, 40);
-  const floorMat = new THREE.MeshStandardMaterial({ color: 0x0d0d0d, metalness: 0.1, roughness: 0.9 });
-  const floor = new THREE.Mesh(floorGeo, floorMat);
-  floor.rotation.x = -Math.PI / 2;
-  floor.receiveShadow = true;
-  scene.add(floor);
-
   createLights();
+  ensureBackdrop();
   window.addEventListener('resize', onWindowResize);
 
   return loadCakeModel();
@@ -270,24 +419,73 @@ function animate() {
 async function startExperience() {
   if (started) return;
   started = true;
-  setStatus('Loading 3D libraries...');
-
-  const libsReady = await ensureThreeStack();
-  if (!libsReady) {
-    started = false;
-    setStatus('3D libraries failed to load. Please refresh or check your connection.', true);
-    return;
-  }
-
+  hideGreeting();
   setStatus('Loading cake...');
 
   clock = new THREE.Clock();
 
   overlay.classList.add('hidden');
-  const loadPromise = initScene();
-  animate();
-
-  await loadPromise;
+  try {
+    const loadPromise = initScene();
+    animate();
+    await loadPromise;
+    setStatus('');
+    showGreeting();
+    showAudioPlayer();
+    if (audioEl) {
+      audioEl
+        .play()
+        .then(() => {
+          isAudioPlaying = true;
+          updateAudioToggle();
+        })
+        .catch((error) => {
+          console.warn('Unable to autoplay music.', error);
+        });
+    }
+  } catch (error) {
+    console.error('Unable to start the 3D experience.', error);
+    setStatus('Something went wrong loading the cake. Please refresh.', true);
+    overlay.classList.remove('hidden');
+    started = false;
+    hideGreeting();
+    hideAudioPlayer();
+  }
 }
 
-enterBtn.addEventListener('click', startExperience);
+function handleEnterClick() {
+  if (remainingPresses > 0) {
+    remainingPresses -= 1;
+    updatePressCounter();
+    if (remainingPresses > 0) {
+      return;
+    }
+  }
+  if (!started) {
+    startExperience();
+  }
+}
+
+enterBtn.addEventListener('click', handleEnterClick);
+
+if (audioToggleBtn && audioEl) {
+  audioToggleBtn.addEventListener('click', () => {
+    if (audioEl.paused) {
+      audioEl
+        .play()
+        .then(() => {
+          isAudioPlaying = true;
+          updateAudioToggle();
+        })
+        .catch((error) => {
+          console.warn('Unable to start audio playback.', error);
+        });
+    } else {
+      audioEl.pause();
+      isAudioPlaying = false;
+      updateAudioToggle();
+    }
+  });
+}
+
+attachAudioEvents();
