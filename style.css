@@ -68,6 +68,16 @@ body {
   box-shadow: 0 8px 20px rgba(255, 255, 255, 0.2);
 }
 
+#status {
+  margin-top: 16px;
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+#status.error {
+  color: #ffb3b3;
+}
+
 canvas {
   display: block;
 }

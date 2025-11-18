@@ -1,8 +1,15 @@
 const container = document.getElementById('scene-container');
 const overlay = document.getElementById('overlay');
 const enterBtn = document.getElementById('enter-btn');
+const statusEl = document.getElementById('status');
 const audioUrl = 'assets/birthday-melody.wav';
 let audio;
+
+function setStatus(message, isError = false) {
+  if (!statusEl) return;
+  statusEl.textContent = message;
+  statusEl.classList.toggle('error', isError);
+}
 
 async function loadAudio() {
   try {
@@ -130,6 +137,14 @@ function createPlaceholderCake() {
 function loadCakeModel() {
   return new Promise((resolve) => {
     const loader = new THREE.GLTFLoader();
+
+    if (THREE.DRACOLoader) {
+      const dracoLoader = new THREE.DRACOLoader();
+      dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
+      dracoLoader.setDecoderConfig({ type: 'js' });
+      loader.setDRACOLoader(dracoLoader);
+    }
+
     loader.load(
       'assets/cake.glb',
       (gltf) => {
@@ -142,13 +157,16 @@ function loadCakeModel() {
         });
         scene.add(model);
         centerModel(model);
+        setStatus('');
         resolve(true);
       },
       undefined,
-      () => {
+      (err) => {
+        console.warn('Could not load cake model, falling back to placeholder.', err);
         const placeholder = createPlaceholderCake();
         scene.add(placeholder);
         centerModel(placeholder);
+        setStatus('Using placeholder cake (model missing or invalid).', true);
         resolve(false);
       },
     );
@@ -161,6 +179,7 @@ function initScene() {
   renderer = createRenderer();
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputEncoding = THREE.sRGBEncoding;
 
   controls = new THREE.OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
@@ -176,7 +195,7 @@ function initScene() {
   scene.add(floor);
 
   createLights();
-  loadCakeModel();
+  return loadCakeModel();
 
   window.addEventListener('resize', onWindowResize);
 }
@@ -198,9 +217,18 @@ function animate() {
 async function startExperience() {
   if (started) return;
   started = true;
+  setStatus('Loading cake...');
+
+  if (!window.THREE || !THREE.GLTFLoader || !THREE.OrbitControls) {
+    setStatus('3D libraries failed to load. Please refresh or check your connection.', true);
+    started = false;
+    return;
+  }
+
   overlay.classList.add('hidden');
-  initScene();
+  const loadPromise = initScene();
   animate();
+
   if (audio) {
     try {
       await audio.play();
@@ -208,6 +236,8 @@ async function startExperience() {
       console.warn('Audio could not start automatically:', err);
     }
   }
+
+  await loadPromise;
 }
 
 enterBtn.addEventListener('click', startExperience);
