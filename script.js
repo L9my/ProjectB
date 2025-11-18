@@ -2,28 +2,11 @@ const container = document.getElementById('scene-container');
 const overlay = document.getElementById('overlay');
 const enterBtn = document.getElementById('enter-btn');
 const statusEl = document.getElementById('status');
-const audioUrl = 'assets/birthday-melody.wav';
-let audio;
 
 function setStatus(message, isError = false) {
   if (!statusEl) return;
   statusEl.textContent = message;
   statusEl.classList.toggle('error', isError);
-}
-
-async function loadAudio() {
-  try {
-    const response = await fetch(audioUrl, { method: 'HEAD' });
-    if (!response.ok) {
-      console.warn('No birthday melody found at', audioUrl);
-      return;
-    }
-    audio = new Audio(audioUrl);
-    audio.loop = true;
-    audio.volume = 0.5;
-  } catch (err) {
-    console.warn('Audio not available:', err);
-  }
 }
 
 let scene, camera, renderer, controls, mixer;
@@ -219,11 +202,7 @@ async function startExperience() {
   started = true;
   setStatus('Loading cake...');
 
-  if (!window.THREE || !THREE.GLTFLoader || !THREE.OrbitControls) {
-    setStatus('3D libraries failed to load. Please refresh or check your connection.', true);
-    started = false;
-    return;
-  }
+  clock = new THREE.Clock();
 
   clock = new THREE.Clock();
 
@@ -231,16 +210,7 @@ async function startExperience() {
   const loadPromise = initScene();
   animate();
 
-  if (audio) {
-    try {
-      await audio.play();
-    } catch (err) {
-      console.warn('Audio could not start automatically:', err);
-    }
-  }
-
   await loadPromise;
 }
 
 enterBtn.addEventListener('click', startExperience);
-loadAudio();
