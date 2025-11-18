@@ -27,7 +27,7 @@ async function loadAudio() {
 }
 
 let scene, camera, renderer, controls, mixer;
-const clock = new THREE.Clock();
+let clock;
 let started = false;
 
 function createRenderer() {
@@ -195,9 +195,9 @@ function initScene() {
   scene.add(floor);
 
   createLights();
-  return loadCakeModel();
-
   window.addEventListener('resize', onWindowResize);
+
+  return loadCakeModel();
 }
 
 function onWindowResize() {
@@ -224,6 +224,8 @@ async function startExperience() {
     started = false;
     return;
   }
+
+  clock = new THREE.Clock();
 
   overlay.classList.add('hidden');
   const loadPromise = initScene();
